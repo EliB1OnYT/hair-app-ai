@@ -1,15 +1,39 @@
 import { useState, useRef } from "react";
-import { Camera, Upload, Loader2 } from "lucide-react";
+import { Camera, Upload, Loader2, Download, Share2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+
+const PRESET_HAIRSTYLES = [
+  "short bob haircut",
+  "long wavy hair",
+  "pixie cut",
+  "shoulder-length layers",
+  "buzz cut",
+  "afro",
+  "sleek ponytail",
+  "messy bun",
+];
+
+const HAIR_COLORS = [
+  { name: "Blonde", value: "blonde" },
+  { name: "Brunette", value: "brunette" },
+  { name: "Black", value: "black" },
+  { name: "Red", value: "red" },
+  { name: "Auburn", value: "auburn" },
+  { name: "Platinum", value: "platinum blonde" },
+  { name: "Pink", value: "pink" },
+  { name: "Blue", value: "blue" },
+];
 
 export const HairstyleCapture = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [processedImage, setProcessedImage] = useState<string | null>(null);
   const [hairstylePrompt, setHairstylePrompt] = useState("");
+  const [selectedColor, setSelectedColor] = useState<string>("");
   const [isProcessing, setIsProcessing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -26,18 +50,23 @@ export const HairstyleCapture = () => {
     }
   };
 
-  const handleApplyHairstyle = async () => {
-    if (!selectedImage || !hairstylePrompt.trim()) {
+  const handleApplyHairstyle = async (customPrompt?: string) => {
+    const prompt = customPrompt || hairstylePrompt;
+    if (!selectedImage || !prompt.trim()) {
       toast.error("Please upload an image and describe the hairstyle");
       return;
     }
 
     setIsProcessing(true);
     try {
+      const fullPrompt = selectedColor 
+        ? `${prompt} with ${selectedColor} hair color`
+        : prompt;
+      
       const { data, error } = await supabase.functions.invoke("apply-hairstyle", {
         body: {
           imageUrl: selectedImage,
-          hairstyleDescription: hairstylePrompt,
+          hairstyleDescription: fullPrompt,
         },
       });
 
@@ -52,6 +81,57 @@ export const HairstyleCapture = () => {
       toast.error(error.message || "Failed to apply hairstyle");
     } finally {
       setIsProcessing(false);
+    }
+  };
+
+  const handlePresetClick = (preset: string) => {
+    setHairstylePrompt(preset);
+    handleApplyHairstyle(preset);
+  };
+
+  const handleDownload = () => {
+    if (!processedImage) return;
+    
+    const link = document.createElement("a");
+    link.href = processedImage;
+    link.download = `hairstyle-${Date.now()}.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    toast.success("Image downloaded!");
+  };
+
+  const handleShare = async (platform: string) => {
+    if (!processedImage) return;
+
+    const shareData = {
+      title: "My New Hairstyle",
+      text: "Check out my new hairstyle from AI Hairstyle Try-On!",
+    };
+
+    if (platform === "native" && navigator.share) {
+      try {
+        await navigator.share(shareData);
+      } catch (error) {
+        console.error("Error sharing:", error);
+      }
+    } else {
+      const text = encodeURIComponent(shareData.text);
+      let url = "";
+      
+      switch (platform) {
+        case "twitter":
+          url = `https://twitter.com/intent/tweet?text=${text}`;
+          break;
+        case "facebook":
+          url = `https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(window.location.href)}`;
+          break;
+        case "whatsapp":
+          url = `https://wa.me/?text=${text}`;
+          break;
+      }
+      
+      if (url) window.open(url, "_blank");
     }
   };
 
@@ -135,18 +215,55 @@ export const HairstyleCapture = () => {
               <div className="space-y-4">
                 <div>
                   <label className="block text-sm font-medium mb-2 text-foreground">
-                    Describe the hairstyle you want
+                    Quick Presets
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {PRESET_HAIRSTYLES.map((preset) => (
+                      <Badge
+                        key={preset}
+                        variant="outline"
+                        className="cursor-pointer hover:bg-primary hover:text-primary-foreground transition-colors px-3 py-1"
+                        onClick={() => handlePresetClick(preset)}
+                      >
+                        {preset}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-foreground">
+                    Hair Color (Optional)
+                  </label>
+                  <div className="flex flex-wrap gap-2">
+                    {HAIR_COLORS.map((color) => (
+                      <Badge
+                        key={color.value}
+                        variant={selectedColor === color.value ? "default" : "outline"}
+                        className="cursor-pointer transition-colors px-3 py-1"
+                        onClick={() => setSelectedColor(selectedColor === color.value ? "" : color.value)}
+                      >
+                        {color.name}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium mb-2 text-foreground">
+                    Custom Description
                   </label>
                   <Input
-                    placeholder="e.g., short bob haircut, long wavy hair, buzz cut..."
+                    placeholder="e.g., shoulder-length with bangs..."
                     value={hairstylePrompt}
                     onChange={(e) => setHairstylePrompt(e.target.value)}
                     className="h-12"
                   />
                 </div>
+
                 <div className="flex gap-3">
                   <Button
-                    onClick={handleApplyHairstyle}
+                    onClick={() => handleApplyHairstyle()}
                     disabled={isProcessing}
                     className="flex-1 h-12"
                     size="lg"
@@ -165,6 +282,7 @@ export const HairstyleCapture = () => {
                       setSelectedImage(null);
                       setProcessedImage(null);
                       setHairstylePrompt("");
+                      setSelectedColor("");
                     }}
                     variant="outline"
                     className="h-12"
@@ -172,6 +290,55 @@ export const HairstyleCapture = () => {
                     Start Over
                   </Button>
                 </div>
+
+                {processedImage && (
+                  <div className="flex flex-col gap-3 pt-4 border-t">
+                    <Button
+                      onClick={handleDownload}
+                      variant="outline"
+                      className="w-full h-12"
+                    >
+                      <Download className="mr-2 h-5 w-5" />
+                      Download Image
+                    </Button>
+                    
+                    <div className="flex gap-2">
+                      <Button
+                        onClick={() => handleShare("native")}
+                        variant="outline"
+                        className="flex-1 h-10"
+                        size="sm"
+                      >
+                        <Share2 className="mr-2 h-4 w-4" />
+                        Share
+                      </Button>
+                      <Button
+                        onClick={() => handleShare("twitter")}
+                        variant="outline"
+                        className="flex-1 h-10"
+                        size="sm"
+                      >
+                        Twitter
+                      </Button>
+                      <Button
+                        onClick={() => handleShare("facebook")}
+                        variant="outline"
+                        className="flex-1 h-10"
+                        size="sm"
+                      >
+                        Facebook
+                      </Button>
+                      <Button
+                        onClick={() => handleShare("whatsapp")}
+                        variant="outline"
+                        className="flex-1 h-10"
+                        size="sm"
+                      >
+                        WhatsApp
+                      </Button>
+                    </div>
+                  </div>
+                )}
               </div>
             </Card>
           </div>
