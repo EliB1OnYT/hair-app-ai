@@ -1,0 +1,4 @@
+project_id = "tnzfpuilwxapimzgntev"
+
+[functions.apply-hairstyle]
+verify_jwt = false
